@@ -1,0 +1,36 @@
+build
+dist
+build-docs
+node_modules
+*.log
+*.pid
+*.seed
+.DS_Store
+lib
+coverage
+.nyc_output
+logs
+pids
+.idea
+.vscode
+.zed
+package-lock.json
+tmp
+jsconfig.json
+docs/api
+docs/typedefs
+.history
+.docusaurus
+**/*.tsbuildinfo
+apify_storage
+crawlee_storage
+storage
+.turbo
+.npmrc
+test/e2e/**/packages
+
+# we use corepack, no need to commit yarn binary
+.yarn
+
+# Local vitest config overrides
+vitest.config.local.mts

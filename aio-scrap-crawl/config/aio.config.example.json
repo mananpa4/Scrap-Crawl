@@ -1,0 +1,24 @@
+{
+  "defaultEngine": "fetch",
+  "logLevel": "info",
+  "logJson": false,
+  "outputDir": "./output",
+  "userAgent": "aio-scrap-crawl/0.1",
+  "crawl": {
+    "maxPages": 50,
+    "maxDepth": 2,
+    "concurrency": 5,
+    "delayMs": 0,
+    "respectRobots": true,
+    "sameOriginOnly": true
+  },
+  "engines": {
+    "firecrawl": { "apiUrl": "", "apiKey": "" },
+    "katana": { "bin": "" },
+    "pyai": { "url": "http://127.0.0.1:8099" }
+  },
+  "security": {
+    "sanitize": true,
+    "wipedownUrl": ""
+  }
+}

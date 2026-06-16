@@ -1,0 +1,20 @@
+{
+  "name": "@aio/security",
+  "version": "0.1.0",
+  "description": "Content security for the AIO: a zero-dependency local prompt-injection sanitizer plus a client for the WipeDown service. Runs before any page content reaches an LLM.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  }
+}

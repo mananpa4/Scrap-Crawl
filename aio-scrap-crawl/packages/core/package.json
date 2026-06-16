@@ -1,0 +1,24 @@
+{
+  "name": "@aio/core",
+  "version": "0.1.0",
+  "description": "Core contract for aio-scrap-crawl: job model, normalized output schema, engine interfaces, registry, config, logging, exporters and a zero-dependency built-in fetch engine.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "zod": "^3.24.1"
+  }
+}

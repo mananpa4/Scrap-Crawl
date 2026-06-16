@@ -1,0 +1,14 @@
+# py-ai service — base runtime
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic>=2.9
+
+# --- Optional engines (install as needed; heavy) ----------------------------
+# Markdown / extraction crawler (Apache-2.0)
+# crawl4ai>=0.4
+# Structured extraction via LLM + graphs (MIT)
+# scrapegraphai>=2.1
+# Agentic browser automation (MIT)
+# browser-use>=0.13
+# Prompt-injection sanitizer (MIT)
+# wipedown>=1.0

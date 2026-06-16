@@ -1,0 +1,23 @@
+{
+  "name": "@aio/adapters",
+  "version": "0.1.0",
+  "description": "Process-boundary engine adapters: Firecrawl (AGPL service, HTTP), Katana (Go binary), and the py-ai service (Crawl4AI/ScrapeGraphAI/browser-use).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aio/core": "workspace:*"
+  }
+}

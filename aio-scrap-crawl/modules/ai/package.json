@@ -1,0 +1,23 @@
+{
+  "name": "@aio/ai",
+  "version": "0.1.0",
+  "description": "AI facade for the AIO: unified LLM provider config and a thin client to the py-ai service for markdown/structured/agentic extraction.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aio/core": "workspace:*"
+  }
+}

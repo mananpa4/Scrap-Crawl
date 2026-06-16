@@ -1,0 +1,606 @@
+import { createHash } from 'node:crypto';
+import type { Duplex } from 'node:stream';
+import { PassThrough, pipeline, Readable, Transform } from 'node:stream';
+import { StringDecoder } from 'node:string_decoder';
+import { createGunzip } from 'node:zlib';
+
+// @ts-expect-error This throws a compilation error due to got-scraping being ESM only but we only import types
+import type { Delays } from 'got-scraping';
+import sax from 'sax';
+import MIMEType from 'whatwg-mimetype';
+
+import log from '@apify/log';
+
+import { mergeAsyncIterables } from './iterables';
+import { RobotsFile } from './robots';
+
+interface SitemapUrlData {
+    loc: string;
+    lastmod?: Date;
+    changefreq?: 'always' | 'hourly' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'never';
+    priority?: number;
+}
+
+export type SitemapUrl = SitemapUrlData & {
+    originSitemapUrl: string;
+};
+
+interface NestedSitemap {
+    loc: string;
+    originSitemapUrl: null;
+}
+
+type SitemapSource = ({ type: 'url'; url: string } | { type: 'raw'; content: string }) & { depth?: number };
+type SitemapItem = ({ type: 'url' } & SitemapUrlData) | { type: 'sitemapUrl'; url: string };
+
+class SitemapTxtParser extends Transform {
+    private decoder: StringDecoder = new StringDecoder('utf8');
+    private buffer = '';
+
+    constructor() {
+        super({
+            readableObjectMode: true,
+            transform: (chunk, _encoding, callback) => {
+                this.processBuffer(this.decoder.write(chunk), false);
+                callback();
+            },
+            flush: (callback) => {
+                this.processBuffer(this.decoder.end(), true);
+                callback();
+            },
+        });
+    }
+
+    private processBuffer(input: string, finalize: boolean): void {
+        this.buffer += input;
+
+        if (finalize || this.buffer.includes('\n')) {
+            const parts = this.buffer
+                .split('\n')
+                .map((part) => part.trim())
+                .filter((part) => part.length > 0);
+
+            if (finalize) {
+                for (const url of parts) {
+                    this.push({ type: 'url', loc: url } satisfies SitemapItem);
+                }
+
+                this.buffer = '';
+            } else if (parts.length > 0) {
+                for (const url of parts.slice(0, -1)) {
+                    this.push({ type: 'url', loc: url } satisfies SitemapItem);
+                }
+
+                this.buffer = parts.at(-1)!;
+            }
+        }
+    }
+}
+
+class SitemapXmlParser extends Transform {
+    private decoder: StringDecoder = new StringDecoder('utf8');
+    private parser = new sax.SAXParser(true);
+
+    private rootTagName?: 'sitemapindex' | 'urlset';
+    private currentTag?: 'loc' | 'lastmod' | 'changefreq' | 'priority' = undefined;
+    private url: Partial<SitemapUrl> = {};
+
+    constructor() {
+        super({
+            readableObjectMode: true,
+            transform: (chunk, _encoding, callback) => {
+                this.parser.write(this.decoder.write(chunk));
+                callback();
+            },
+            flush: (callback) => {
+                const rest = this.decoder.end();
+                if (rest.length > 0) {
+                    this.parser.write(rest);
+                }
+
+                this.parser.end();
+                callback();
+            },
+        });
+
+        this.parser.onopentag = this.onOpenTag.bind(this);
+        this.parser.onclosetag = this.onCloseTag.bind(this);
+
+        this.parser.ontext = this.onText.bind(this);
+        this.parser.oncdata = this.onText.bind(this);
+
+        this.parser.onerror = this.destroy.bind(this);
+    }
+
+    private onOpenTag(node: sax.Tag | sax.QualifiedTag) {
+        if (this.rootTagName !== undefined) {
+            if (
+                node.name === 'loc' ||
+                node.name === 'lastmod' ||
+                node.name === 'priority' ||
+                node.name === 'changefreq'
+            ) {
+                this.currentTag = node.name;
+            }
+        }
+        if (node.name === 'urlset') {
+            this.rootTagName = 'urlset';
+        }
+        if (node.name === 'sitemapindex') {
+            this.rootTagName = 'sitemapindex';
+        }
+    }
+
+    private onCloseTag(name: string) {
+        if (name === 'loc' || name === 'lastmod' || name === 'priority' || name === 'changefreq') {
+            this.currentTag = undefined;
+        }
+
+        if (name === 'url' && this.url.loc !== undefined) {
+            this.push({ type: 'url', ...this.url, loc: this.url.loc } satisfies SitemapItem);
+            this.url = {};
+        }
+    }
+
+    private onText(text: string) {
+        if (this.currentTag === 'loc') {
+            if (this.rootTagName === 'sitemapindex') {
+                this.push({ type: 'sitemapUrl', url: text.trim() } satisfies SitemapItem);
+            }
+
+            if (this.rootTagName === 'urlset') {
+                this.url ??= {};
+                this.url.loc = text.trim();
+            }
+        }
+
+        text = text.trim();
+
+        if (this.currentTag === 'lastmod') {
+            this.url.lastmod = new Date(text);
+        }
+
+        if (this.currentTag === 'priority') {
+            this.url.priority = Number(text);
+        }
+
+        if (this.currentTag === 'changefreq') {
+            if (['always', 'hourly', 'daily', 'weekly', 'monthly', 'yearly', 'never'].includes(text)) {
+                this.url.changefreq = text as SitemapUrl['changefreq'];
+            }
+        }
+    }
+}
+
+export interface ParseSitemapOptions {
+    /**
+     * If set to `true`, elements referring to other sitemaps will be emitted as special objects with `originSitemapUrl` set to `null`.
+     */
+    emitNestedSitemaps?: true | false;
+    /**
+     * Maximum depth of nested sitemaps to follow.
+     */
+    maxDepth?: number;
+    /**
+     * Number of retries for fetching sitemaps. The counter resets for each nested sitemap.
+     */
+    sitemapRetries?: number;
+    /**
+     * Network timeouts for sitemap fetching. See [Got documentation](https://github.com/sindresorhus/got/blob/main/documentation/6-timeout.md) for more details.
+     */
+    networkTimeouts?: Delays;
+    /**
+     * If true, the parser will log a warning if it fails to fetch a sitemap due to a network error
+     * @default true
+     */
+    reportNetworkErrors?: boolean;
+    /**
+     * Optional filter for nested sitemap URLs discovered in sitemap index files.
+     * Called with the URL of each child sitemap before it is fetched.
+     * Return `true` to include the sitemap, `false` to skip it.
+     * If not provided, all nested sitemaps are followed.
+     */
+    nestedSitemapFilter?: (sitemapUrl: string) => boolean;
+}
+
+export async function* parseSitemap<T extends ParseSitemapOptions>(
+    initialSources: SitemapSource[],
+    proxyUrl?: string,
+    options?: T,
+): AsyncIterable<T['emitNestedSitemaps'] extends true ? SitemapUrl | NestedSitemap : SitemapUrl> {
+    const { gotScraping } = await import('got-scraping');
+    const { fileTypeStream } = await import('file-type');
+    const {
+        emitNestedSitemaps = false,
+        maxDepth = Infinity,
+        sitemapRetries = 3,
+        networkTimeouts,
+        reportNetworkErrors = true,
+        nestedSitemapFilter,
+    } = options ?? {};
+
+    const sources = [...initialSources];
+    const visitedSitemapUrls = new Set<string>();
+
+    const createParser = (contentType = '', url?: URL): Duplex => {
+        let mimeType: MIMEType | null;
+
+        try {
+            mimeType = new MIMEType(contentType);
+        } catch {
+            mimeType = null;
+        }
+
+        if (mimeType?.isXML() || url?.pathname.endsWith('.xml')) {
+            return new SitemapXmlParser();
+        }
+
+        if (mimeType?.essence === 'text/plain' || url?.pathname.endsWith('.txt')) {
+            return new SitemapTxtParser();
+        }
+
+        throw new Error(`Unsupported sitemap content type (contentType = ${contentType}, url = ${url?.toString()})`);
+    };
+
+    while (sources.length > 0) {
+        const source = sources.shift()!;
+
+        if ((source?.depth ?? 0) > maxDepth) {
+            log.debug(
+                `Skipping sitemap ${source.type === 'url' ? source.url : ''} because it reached max depth ${maxDepth}.`,
+            );
+            continue;
+        }
+
+        let items: AsyncIterable<SitemapItem> | null = null;
+
+        if (source.type === 'url') {
+            const sitemapUrl = new URL(source.url);
+            visitedSitemapUrls.add(sitemapUrl.toString());
+            let retriesLeft = sitemapRetries + 1;
+
+            while (retriesLeft-- > 0) {
+                try {
+                    const sitemapStream = await new Promise<ReturnType<typeof gotScraping.stream>>(
+                        (resolve, reject) => {
+                            const request = gotScraping.stream({
+                                url: sitemapUrl,
+                                proxyUrl,
+                                method: 'GET',
+                                timeout: networkTimeouts,
+                                headers: {
+                                    accept: '*/*',
+                                },
+                            });
+                            request.on('response', () => resolve(request));
+                            request.on('error', reject);
+                        },
+                    );
+
+                    let error: { error: Error; type: 'fetch' | 'parser' } | null = null;
+
+                    if (sitemapStream.response!.statusCode >= 200 && sitemapStream.response!.statusCode < 300) {
+                        let contentType = sitemapStream.response!.headers['content-type'];
+
+                        const streamWithType = await fileTypeStream(sitemapStream);
+                        if (streamWithType.fileType !== undefined) {
+                            contentType = streamWithType.fileType.mime;
+                        }
+
+                        let isGzipped = false;
+
+                        if (
+                            contentType !== undefined
+                                ? contentType === 'application/gzip'
+                                : sitemapUrl.pathname.endsWith('.gz')
+                        ) {
+                            isGzipped = true;
+
+                            if (sitemapUrl.pathname.endsWith('.gz')) {
+                                sitemapUrl.pathname = sitemapUrl.pathname.substring(0, sitemapUrl.pathname.length - 3);
+                            }
+                        }
+
+                        items = pipeline(
+                            streamWithType,
+                            isGzipped ? createGunzip() : new PassThrough(),
+                            createParser(contentType, sitemapUrl),
+                            (e) => {
+                                if (e !== undefined && e !== null) {
+                                    error = { type: 'parser', error: e };
+                                }
+                            },
+                        );
+                    } else {
+                        error = {
+                            type: 'fetch',
+                            error: new Error(
+                                `Failed to fetch sitemap: ${sitemapUrl}, status code: ${sitemapStream.response!.statusCode}`,
+                            ),
+                        };
+                    }
+
+                    if (error !== null) {
+                        const shouldIgnoreError = error.type === 'fetch' && !reportNetworkErrors;
+                        if (!shouldIgnoreError) {
+                            throw error.error;
+                        }
+                    } else {
+                        break;
+                    }
+                } catch (e) {
+                    log.warning(
+                        `Malformed sitemap content: ${sitemapUrl}, ${retriesLeft === 0 ? 'no retries left.' : 'retrying...'} (${e})`,
+                    );
+                }
+            }
+        } else if (source.type === 'raw') {
+            items = pipeline(Readable.from([source.content]), createParser('text/xml'), (error) => {
+                if (error !== undefined) {
+                    log.warning(`Malformed sitemap content: ${error}`);
+                }
+            });
+        }
+
+        if (items === null) {
+            continue;
+        }
+
+        for await (const item of items) {
+            if (item.type === 'sitemapUrl' && !visitedSitemapUrls.has(item.url)) {
+                if (nestedSitemapFilter && !nestedSitemapFilter(item.url)) {
+                    log.debug(`Skipping sitemap ${item.url} due to nestedSitemapFilter.`);
+                    continue;
+                }
+
+                sources.push({ type: 'url', url: item.url, depth: (source.depth ?? 0) + 1 });
+                if (emitNestedSitemaps) {
+                    yield { loc: item.url, originSitemapUrl: null } as any;
+                }
+            }
+
+            if (item.type === 'url') {
+                yield {
+                    ...item,
+                    originSitemapUrl:
+                        source.type === 'url'
+                            ? source.url
+                            : `raw://${createHash('sha256').update(source.content).digest('base64')}`,
+                };
+            }
+        }
+    }
+}
+
+/**
+ * Loads one or more sitemaps from given URLs, following references in sitemap index files, and exposes the contained URLs.
+ *
+ * **Example usage:**
+ * ```javascript
+ * // Load a sitemap
+ * const sitemap = await Sitemap.load(['https://example.com/sitemap.xml', 'https://example.com/sitemap_2.xml.gz']);
+ *
+ * // Enqueue all the contained URLs (including those from sub-sitemaps from sitemap indexes)
+ * await crawler.addRequests(sitemap.urls);
+ * ```
+ */
+export class Sitemap {
+    constructor(readonly urls: string[]) {}
+
+    /**
+     * Try to load sitemap from the most common locations - `/sitemap.xml` and `/sitemap.txt`.
+     * For loading based on `Sitemap` entries in `robots.txt`, the {@apilink RobotsTxtFile} class should be used.
+     * @param url The domain URL to fetch the sitemap for.
+     * @param proxyUrl A proxy to be used for fetching the sitemap file.
+     */
+    static async tryCommonNames(url: string, proxyUrl?: string): Promise<Sitemap> {
+        const sitemapUrls: string[] = [];
+
+        const sitemapUrl = new URL(url);
+        sitemapUrl.search = '';
+
+        sitemapUrl.pathname = '/sitemap.xml';
+        sitemapUrls.push(sitemapUrl.toString());
+
+        sitemapUrl.pathname = '/sitemap.txt';
+        sitemapUrls.push(sitemapUrl.toString());
+
+        return Sitemap.load(sitemapUrls, proxyUrl, { reportNetworkErrors: false });
+    }
+
+    /**
+     * Fetch sitemap content from given URL or URLs and return URLs of referenced pages.
+     * @param urls sitemap URL(s)
+     * @param proxyUrl URL of a proxy to be used for fetching sitemap contents
+     */
+    static async load(
+        urls: string | string[],
+        proxyUrl?: string,
+        parseSitemapOptions?: ParseSitemapOptions,
+    ): Promise<Sitemap> {
+        return await this.parse(
+            (Array.isArray(urls) ? urls : [urls]).map((url) => ({ type: 'url', url })),
+            proxyUrl,
+            parseSitemapOptions,
+        );
+    }
+
+    /**
+     * Parse XML sitemap content from a string and return URLs of referenced pages. If the sitemap references other sitemaps, they will be loaded via HTTP.
+     * @param content XML sitemap content
+     * @param proxyUrl URL of a proxy to be used for fetching sitemap contents
+     */
+    static async fromXmlString(content: string, proxyUrl?: string): Promise<Sitemap> {
+        return await this.parse([{ type: 'raw', content }], proxyUrl);
+    }
+
+    protected static async parse(
+        sources: SitemapSource[],
+        proxyUrl?: string,
+        parseSitemapOptions?: ParseSitemapOptions,
+    ): Promise<Sitemap> {
+        const urls: string[] = [];
+
+        try {
+            for await (const item of parseSitemap(sources, proxyUrl, parseSitemapOptions)) {
+                urls.push(item.loc);
+            }
+        } catch (e) {
+            log.warning(`Sitemap.load: Failed to load sitemap, returning empty result. (${e})`);
+            return new Sitemap([]);
+        }
+
+        return new Sitemap(urls);
+    }
+}
+
+/**
+ * Given a list of URLs, discover related sitemap files for these domains by checking the `robots.txt` file,
+ * the default `sitemap.xml` & `sitemap.txt` files and the URLs themselves.
+ * @param `urls` The list of URLs to discover sitemaps for.
+ * @param `options` Options for sitemap discovery
+ * @returns An async iterable with the discovered sitemap URLs.
+ */
+export async function* discoverValidSitemaps(
+    urls: string[],
+    options: {
+        /**
+         * Proxy URL to be used for network requests.
+         */
+        proxyUrl?: string;
+        /**
+         * Timeout in milliseconds for the entire `discoverValidSitemaps` call.
+         * An `AbortController` is created internally and its signal is passed to every HTTP request,
+         * so the whole discovery operation is cancelled once the timeout elapses.
+         * Defaults to `60_000` ms (60 seconds) to prevent indefinite hangs.
+         */
+        timeoutMillis?: number;
+        /**
+         * An external `AbortSignal` to cancel the entire discovery operation.
+         * If both `signal` and `timeout` are provided, the operation is cancelled
+         * when either the signal is aborted or the timeout elapses (whichever comes first).
+         */
+        signal?: AbortSignal;
+        /**
+         * Timeout in milliseconds for each individual HTTP request during discovery.
+         * Defaults to `20000` ms (20 seconds).
+         */
+        requestTimeoutMillis?: number;
+    } = {},
+): AsyncIterable<string> {
+    const { proxyUrl, timeoutMillis = 60_000, signal: externalSignal, requestTimeoutMillis = 20_000 } = options;
+    const controller = new AbortController();
+
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMillis);
+    const onExternalAbort = () => controller.abort();
+    if (externalSignal) {
+        if (externalSignal.aborted) {
+            controller.abort();
+        } else {
+            externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+        }
+    }
+
+    const signal = controller.signal;
+    const { gotScraping } = await import('got-scraping');
+    const sitemapUrls = new Set<string>();
+
+    const addSitemapUrl = (url: string): string | undefined => {
+        const sizeBefore = sitemapUrls.size;
+
+        sitemapUrls.add(url);
+
+        if (sitemapUrls.size > sizeBefore) {
+            return url;
+        }
+
+        return undefined;
+    };
+
+    const urlExists = async (url: string) => {
+        const response = await gotScraping({
+            url,
+            method: 'HEAD',
+            proxyUrl,
+            timeout: {
+                request: requestTimeoutMillis,
+            },
+            signal,
+        });
+
+        return response.statusCode >= 200 && response.statusCode < 400;
+    };
+
+    const discoverSitemapsForDomainUrls = async function* (hostname: string, domainUrls: string[]) {
+        if (!hostname) {
+            return;
+        }
+
+        try {
+            const robotsFile = await RobotsFile.find(domainUrls[0], proxyUrl, {
+                timeoutMillis: requestTimeoutMillis,
+                signal,
+            });
+            for (const sitemapUrl of robotsFile.getSitemaps()) {
+                if (addSitemapUrl(sitemapUrl)) {
+                    yield sitemapUrl;
+                }
+            }
+        } catch (err) {
+            log.warning(`Failed to fetch robots.txt file for ${hostname}`, { error: err });
+        }
+
+        const sitemapUrl = domainUrls.find((url) => /sitemap\.(?:xml|txt)(?:\.gz)?$/i.test(url));
+
+        if (sitemapUrl !== undefined) {
+            if (addSitemapUrl(sitemapUrl)) {
+                yield sitemapUrl;
+            }
+        } else {
+            const firstUrl = new URL(domainUrls[0]);
+            const possibleSitemapPathnames = ['/sitemap.xml', '/sitemap.txt', '/sitemap_index.xml'];
+            const candidateSitemapUrls = possibleSitemapPathnames.map((pathname) => {
+                firstUrl.pathname = pathname;
+                return firstUrl.toString();
+            });
+            const candidateResults = await Promise.allSettled(candidateSitemapUrls.map(urlExists));
+
+            for (const [index, result] of candidateResults.entries()) {
+                const candidateSitemapUrl = candidateSitemapUrls[index];
+
+                if (result.status === 'fulfilled') {
+                    if (result.value && addSitemapUrl(candidateSitemapUrl)) {
+                        yield candidateSitemapUrl;
+                    }
+                } else {
+                    log.debug(`Failed to check sitemap candidate ${candidateSitemapUrl} for ${hostname}`, {
+                        error: result.reason,
+                    });
+                }
+            }
+        }
+    };
+
+    const groupedUrls = urls.reduce(
+        (acc, url) => {
+            const hostname = new URL(url)?.hostname ?? '';
+            acc[hostname] ??= [];
+            acc[hostname].push(url);
+            return acc;
+        },
+        {} as Record<string, string[]>,
+    );
+
+    const iterables = Object.entries(groupedUrls).map(([hostname, domainUrls]) =>
+        discoverSitemapsForDomainUrls(hostname, domainUrls),
+    );
+
+    try {
+        for await (const url of mergeAsyncIterables(...iterables)) {
+            yield url;
+        }
+    } finally {
+        clearTimeout(timeoutHandle);
+        externalSignal?.removeEventListener('abort', onExternalAbort);
+    }
+}

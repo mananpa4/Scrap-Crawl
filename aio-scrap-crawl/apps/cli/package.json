@@ -1,0 +1,27 @@
+{
+  "name": "@aio/cli",
+  "version": "0.1.0",
+  "description": "Unified CLI for aio-scrap-crawl. One command surface over every engine.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "aio": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aio/adapters": "workspace:*",
+    "@aio/ai": "workspace:*",
+    "@aio/core": "workspace:*",
+    "@aio/crawler": "workspace:*",
+    "@aio/security": "workspace:*",
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

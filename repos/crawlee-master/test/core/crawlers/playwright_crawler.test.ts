@@ -1,0 +1,301 @@
+import type { Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import os from 'node:os';
+
+import type {
+    Cheerio,
+    CheerioAPI,
+    CheerioRoot,
+    Element,
+    PlaywrightCrawlingContext,
+    PlaywrightGotoOptions,
+    PlaywrightRequestHandler,
+    Request,
+} from '@crawlee/playwright';
+import { PlaywrightCrawler, RequestList } from '@crawlee/playwright';
+import express from 'express';
+import playwright from 'playwright';
+
+import log from '@apify/log';
+
+import { startExpressAppPromise } from '../../shared/_helper';
+import { MemoryStorageEmulator } from '../../shared/MemoryStorageEmulator';
+
+if (os.platform() === 'win32') vitest.setConfig({ testTimeout: 2 * 60 * 1e3 });
+
+describe('PlaywrightCrawler', () => {
+    let prevEnvHeadless: string | undefined;
+    let logLevel: number;
+    const localStorageEmulator = new MemoryStorageEmulator();
+    let requestList: RequestList;
+
+    const HOSTNAME = '127.0.0.1';
+    let port: number;
+    let server: Server;
+
+    beforeAll(async () => {
+        const app = express();
+        server = await startExpressAppPromise(app, 0);
+        port = (server.address() as AddressInfo).port;
+        app.get('/', (req, res) => {
+            res.send(`<html><head><title>Example Domain</title></head></html>`);
+            res.status(200);
+        });
+        app.get('/page-with-download', (_req, res) => {
+            res.status(200).send(
+                `<html><body><a id="download-link" href="/download-file" download="hello.txt">download</a></body></html>`,
+            );
+        });
+        app.get('/download-file', (_req, res) => {
+            res.setHeader('Content-Type', 'text/plain');
+            res.setHeader('Content-Disposition', 'attachment; filename="hello.txt"');
+            res.send('hello');
+        });
+    });
+
+    beforeAll(async () => {
+        prevEnvHeadless = process.env.CRAWLEE_HEADLESS;
+        process.env.CRAWLEE_HEADLESS = '1';
+        logLevel = log.getLevel();
+        log.setLevel(log.LEVELS.ERROR);
+    });
+
+    beforeEach(async () => {
+        await localStorageEmulator.init();
+
+        const sources = [`http://${HOSTNAME}:${[port]}/`];
+        requestList = await RequestList.open(`sources-${Math.random() * 10000}`, sources);
+    });
+
+    afterAll(async () => {
+        await localStorageEmulator.destroy();
+    });
+
+    afterAll(async () => {
+        log.setLevel(logLevel);
+        process.env.CRAWLEE_HEADLESS = prevEnvHeadless;
+    });
+    afterAll(async () => {
+        server.close();
+    });
+
+    vitest.setConfig({ testTimeout: 2 * 60 * 1e3 });
+    describe('should work', () => {
+        // @TODO: add webkit
+        test.each(['chromium', 'firefox'] as const)('with %s', async (browser) => {
+            const sourcesLarge = [
+                { url: `http://${HOSTNAME}:${port}/?q=1` },
+                { url: `http://${HOSTNAME}:${port}/?q=2` },
+                { url: `http://${HOSTNAME}:${port}/?q=3` },
+                { url: `http://${HOSTNAME}:${port}/?q=4` },
+                { url: `http://${HOSTNAME}:${port}/?q=5` },
+                { url: `http://${HOSTNAME}:${port}/?q=6` },
+            ];
+            const sourcesCopy = JSON.parse(JSON.stringify(sourcesLarge));
+            const processed: Request[] = [];
+            const failed: Request[] = [];
+            const requestListLarge = await RequestList.open({ sources: sourcesLarge });
+            const requestHandler = async ({
+                page,
+                request,
+                response,
+                useState,
+            }: Parameters<PlaywrightRequestHandler>[0]) => {
+                const state = await useState([]);
+                expect(response!.status()).toBe(200);
+                request.userData.title = await page.title();
+                processed.push(request);
+                expect(response!.request().headers()['user-agent']).not.toMatch(/headless/i);
+
+                // firefox now also returns `webdriver: true` since playwright 1.45, we are masking this via fingerprints,
+                // but this test has them disabled, so we can check the default handling (= there is non-default UA even without them)
+                if (browser !== 'firefox') {
+                    await expect(page.evaluate(() => window.navigator.webdriver)).resolves.toBeFalsy();
+                }
+            };
+
+            const playwrightCrawler = new PlaywrightCrawler({
+                launchContext: {
+                    launcher: playwright[browser],
+                },
+                browserPoolOptions: { useFingerprints: false },
+                requestList: requestListLarge,
+                minConcurrency: 1,
+                maxConcurrency: 1,
+                requestHandler,
+                failedRequestHandler: ({ request }) => {
+                    failed.push(request);
+                },
+            });
+
+            await playwrightCrawler.run();
+
+            expect(playwrightCrawler.autoscaledPool!.minConcurrency).toBe(1);
+            expect(processed).toHaveLength(6);
+            expect(failed).toHaveLength(0);
+
+            processed.forEach((request, id) => {
+                expect(request.url).toEqual(sourcesCopy[id].url);
+                expect(request.userData.title).toBe('Example Domain');
+            });
+        });
+    });
+
+    // https://github.com/apify/crawlee/issues/3670
+    test('should not silently drop requests when BrowserPool.newPage() times out', async () => {
+        const success: string[] = [];
+        const failure: string[] = [];
+
+        const crawler = new PlaywrightCrawler({
+            maxRequestRetries: 0,
+            browserPoolOptions: {
+                operationTimeoutSecs: 0.001,
+            },
+            requestHandler: async ({ request }) => {
+                success.push(request.url);
+            },
+            failedRequestHandler: async ({ request }) => {
+                failure.push(request.url);
+            },
+        });
+
+        const urls = [
+            `http://${HOSTNAME}:${port}/?q=1`,
+            `http://${HOSTNAME}:${port}/?q=2`,
+            `http://${HOSTNAME}:${port}/?q=3`,
+            `http://${HOSTNAME}:${port}/?q=4`,
+            `http://${HOSTNAME}:${port}/?q=5`,
+        ];
+
+        const stats = await crawler.run(urls);
+
+        // Every request must be accounted for by either requestHandler or failedRequestHandler.
+        expect(success.length + failure.length).toBe(urls.length);
+        // With operationTimeoutSecs=0.001, no request can actually succeed, so every one must fail.
+        expect(stats.requestsFinished).toBe(0);
+        expect(stats.requestsFailed).toBe(urls.length);
+    });
+
+    test('should override goto timeout with navigationTimeoutSecs', async () => {
+        const timeoutSecs = 10;
+        let options: PlaywrightGotoOptions;
+        const playwrightCrawler = new PlaywrightCrawler({
+            requestList,
+            maxRequestRetries: 0,
+            maxConcurrency: 1,
+            requestHandler: () => {},
+            preNavigationHooks: [
+                (_context, gotoOptions) => {
+                    options = gotoOptions;
+                },
+            ],
+            navigationTimeoutSecs: timeoutSecs,
+        });
+
+        await playwrightCrawler.run();
+        expect(options!.timeout).toEqual(timeoutSecs * 1000);
+    });
+
+    test('shallow clones browserPoolOptions before normalization', () => {
+        const options = {
+            browserPoolOptions: {},
+            requestHandler: async () => {},
+        };
+
+        void new PlaywrightCrawler(options);
+        void new PlaywrightCrawler(options);
+
+        expect(Object.keys(options.browserPoolOptions).length).toBe(0);
+    });
+
+    test.each([
+        { useIncognitoPages: true },
+        { useIncognitoPages: false },
+    ])('should apply launchOptions with useIncognitoPages: $useIncognitoPages', async ({ useIncognitoPages }) => {
+        // Some launch options apply to the browser, while some apply to the context.
+        // Here we use some context options to verify that those are actually applied.
+        const launchOptions = {
+            locale: 'cz-CZ',
+            reducedMotion: 'reduce' as const,
+            timezoneId: 'Pacific/Tahiti',
+        };
+
+        let [timezone, locale, reducedMotion] = ['', '', ''];
+
+        const playwrightCrawler = new PlaywrightCrawler({
+            maxConcurrency: 1,
+            launchContext: {
+                useIncognitoPages,
+                launchOptions,
+            },
+            browserPoolOptions: {
+                // don't overwrite locale with fingerprint's locale
+                useFingerprints: false,
+            },
+            requestHandler: async ({ page }) => {
+                [timezone, locale, reducedMotion] = await Promise.all([
+                    page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
+                    page.evaluate(() => navigator.language),
+                    page.evaluate(() => {
+                        return window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                            ? 'reduce'
+                            : 'no-preference';
+                    }),
+                ]);
+            },
+        });
+
+        await playwrightCrawler.run([`http://${HOSTNAME}:${port}/`]);
+
+        expect(timezone).toBe(launchOptions.timezoneId);
+        expect(locale).toBe(launchOptions.locale);
+        expect(reducedMotion).toBe(launchOptions.reducedMotion);
+    });
+
+    test('exposes triggered downloads via listDownloads()', async () => {
+        let countBefore = -1;
+        let countAfter = -1;
+        let suggestedFilename: string | undefined;
+
+        const playwrightCrawler = new PlaywrightCrawler({
+            maxRequestRetries: 0,
+            maxConcurrency: 1,
+            requestHandler: async ({ page, listDownloads }) => {
+                countBefore = (await listDownloads()).length;
+
+                const downloadPromise = page.waitForEvent('download');
+                await page.click('a#download-link');
+                await downloadPromise;
+
+                const downloads = await listDownloads();
+                countAfter = downloads.length;
+                suggestedFilename = downloads[0]?.suggestedFilename();
+            },
+        });
+
+        await playwrightCrawler.run([`http://${HOSTNAME}:${port}/page-with-download`]);
+
+        expect(countBefore).toBe(0);
+        expect(countAfter).toBe(1);
+        expect(suggestedFilename).toBe('hello.txt');
+    });
+
+    test('should have correct types in crawling context', async () => {
+        const requestHandler = async (crawlingContext: PlaywrightCrawlingContext) => {
+            // Checking that types are correct
+            const $ = await crawlingContext.parseWithCheerio();
+
+            const _cheerioRootType: CheerioRoot = $;
+            const _apiType: CheerioAPI = $;
+            const _cheerioElementType: Cheerio<Element> = $('div');
+        };
+
+        const playwrightCrawler = new PlaywrightCrawler({
+            requestList,
+            maxRequestRetries: 0,
+            maxConcurrency: 1,
+            requestHandler,
+        });
+        await playwrightCrawler.run();
+    });
+});

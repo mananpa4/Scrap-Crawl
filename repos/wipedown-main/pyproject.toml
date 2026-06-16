@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wipedown"
+version = "0.3.0"
+description = "Zero-Trust Semantic Scraper — prevents prompt injections before they reach your coding agent"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests==2.32.3",
+    "beautifulsoup4==4.13.4",
+    "typer>=0.15.0",
+    "ollama==0.4.7",
+    "rich==14.0.0",
+    "fastapi==0.115.0",
+    "uvicorn[standard]==0.30.6",
+]
+
+[project.scripts]
+wipedown = "wipedown.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["wipedown*"]

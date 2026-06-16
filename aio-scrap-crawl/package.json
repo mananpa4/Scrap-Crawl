@@ -1,0 +1,34 @@
+{
+  "name": "aio-scrap-crawl",
+  "version": "0.1.0",
+  "private": true,
+  "description": "All-In-One scraping/crawling orchestration platform unifying the best of multiple open-source engines behind one core, CLI and API.",
+  "license": "MIT",
+  "type": "module",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "turbo run typecheck",
+    "clean": "rimraf \"packages/*/dist\" \"modules/*/dist\" \"apps/*/dist\" .turbo",
+    "aio": "node apps/cli/dist/index.js",
+    "example:crawl": "node scripts/example-crawl.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^6.0.1",
+    "tsup": "^8.3.5",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
+}

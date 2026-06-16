@@ -1,0 +1,40 @@
+# Optional companion services for aio-scrap-crawl.
+# The TypeScript core/CLI runs WITHOUT any of these. Start only what you need.
+#
+#   docker compose up py-ai          # Python AI engines (Crawl4AI/ScrapeGraphAI/...)
+#   docker compose up firecrawl      # AGPL service, isolated behind HTTP (see note)
+#
+# AGPL NOTE: Firecrawl and Maxun are AGPL-3.0. They run here as SEPARATE network
+# services and are consumed only via their HTTP API, so the permissive AIO core
+# is never linked against AGPL code. Do not vendor their source into packages/.
+
+services:
+  py-ai:
+    image: python:3.12-slim
+    working_dir: /app
+    volumes:
+      - ./services/py-ai:/app
+    command: >
+      sh -c "pip install -r requirements.txt &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8099"
+    ports:
+      - "8099:8099"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+
+  # --- Firecrawl (AGPL-3.0) — bring your own checkout ------------------------
+  # Use the upstream compose in ../repos/firecrawl-main for the full stack
+  # (api + workers + redis + playwright-service), then set FIRECRAWL_API_URL.
+  #
+  # firecrawl:
+  #   build: ../repos/firecrawl-main/apps/api
+  #   ports: ["3002:3002"]
+  #   depends_on: [redis]
+  #
+  # redis:
+  #   image: redis:7-alpine
+  #   ports: ["6379:6379"]
+
+  # --- Maxun (AGPL-3.0) — optional no-code web UI ----------------------------
+  # See ../repos/maxun-develop/docker-compose.yml for the full app + Postgres.
