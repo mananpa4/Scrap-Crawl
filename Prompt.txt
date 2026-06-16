@@ -1,0 +1,411 @@
+Actúa como arquitecto senior full-stack y especialista en scraping, crawling, automatización, parsing, extracción de datos, colas de trabajo, APIs y herramientas AIO.
+
+
+
+Tengo varios repositorios dentro de esta carpeta:
+
+
+
+E:\Usuarios\Tony\OneDrive\Documents\GitHub\Scrap-Crawl
+
+
+
+Quiero que hagas un MERGE inteligente de todos los repos para construir un solo proyecto AIO, es decir, una herramienta “All In One” que reúna lo mejor de cada repositorio.
+
+
+
+OBJETIVO PRINCIPAL
+
+
+
+Crear un proyecto unificado, limpio, mantenible y modular que combine las mejores funciones de todos los repositorios existentes en la carpeta. No quiero simplemente copiar y pegar archivos. Quiero que analices, compares, selecciones, refactorices e integres lo mejor de cada repo.
+
+
+
+ANTES DE MODIFICAR CÓDIGO
+
+
+
+1. Escanea todos los subdirectorios dentro de Scrap-Crawl.
+
+2. Identifica qué hace cada repositorio.
+
+3. Detecta el stack usado en cada uno: Node.js, Python, PHP, Laravel, Electron, Next.js, React, CLI, Docker, etc.
+
+4. Genera un inventario técnico de cada repo.
+
+5. Detecta funciones repetidas, mejores implementaciones, errores, código obsoleto y dependencias incompatibles.
+
+6. Crea un archivo llamado MERGE_ANALYSIS.md donde expliques:
+
+
+
+   * Qué repos encontraste.
+
+   * Qué hace cada uno.
+
+   * Qué funciones conviene conservar.
+
+   * Qué funciones conviene descartar.
+
+   * Qué repo debería usarse como base principal.
+
+   * Qué arquitectura final recomiendas.
+
+
+
+REGLAS IMPORTANTES
+
+
+
+* No borres ningún repositorio original.
+
+* No sobrescribas archivos importantes sin crear respaldo o sin moverlos a una estructura organizada.
+
+* Si hay conflictos entre dependencias, elige la versión más estable y documenta la decisión.
+
+* Si hay funciones duplicadas, conserva la versión más completa, limpia y mantenible.
+
+* Si una función está buena pero mal organizada, refactorízala.
+
+* Si una función está rota pero tiene valor, intégrala como módulo pendiente y documenta qué falta corregir.
+
+* Mantén los nombres de funciones importantes cuando sea posible.
+
+* No inventes funciones innecesarias; primero integra lo existente.
+
+* Todo debe quedar listo para crecer como proyecto serio.
+
+
+
+ARQUITECTURA DESEADA
+
+
+
+Quiero una arquitectura modular tipo AIO con módulos independientes. Usa una estructura similar a esta, adaptándola al stack que detectes como mejor:
+
+
+
+/aio-scrap-crawl
+
+/apps
+
+/web
+
+/desktop
+
+/cli
+
+/packages
+
+/core
+
+/crawler
+
+/scraper
+
+/parser
+
+/extractor
+
+/automation
+
+/api
+
+/storage
+
+/utils
+
+/modules
+
+/social
+
+/ecommerce
+
+/news
+
+/seo
+
+/files
+
+/images
+
+/video
+
+/ai
+
+/config
+
+/docs
+
+/scripts
+
+/tests
+
+
+
+No uses esta estructura de forma ciega. Primero analiza los repos y adapta la arquitectura a lo que realmente exista.
+
+
+
+FUNCIONES QUE QUIERO UNIFICAR SI EXISTEN EN LOS REPOS
+
+
+
+Integra todo lo útil relacionado con:
+
+
+
+* Crawling de sitios web.
+
+* Scraping de páginas.
+
+* Extracción de texto, HTML, imágenes, enlaces, metadatos y datos estructurados.
+
+* Parsers.
+
+* Scrapers por categorías.
+
+* Automatización de navegador.
+
+* Soporte para Playwright, Puppeteer, Selenium o similares si ya existen.
+
+* Descarga de archivos.
+
+* Crawlers recursivos.
+
+* Manejo de sitemaps.
+
+* Manejo de robots.txt.
+
+* Rate limiting.
+
+* Rotación de user-agent.
+
+* Proxies si ya existe soporte.
+
+* Sistema de jobs o colas si existe.
+
+* Exportación a JSON, CSV, Excel, SQLite, MySQL o PostgreSQL si existe.
+
+* API REST si existe.
+
+* Interfaz web si existe.
+
+* CLI si existe.
+
+* Logs.
+
+* Configuración por archivo .env.
+
+* Sistema de plugins o módulos.
+
+* Integraciones con IA si existen.
+
+* Limpieza y normalización de datos.
+
+* Deduplicación de URLs o resultados.
+
+
+
+RESULTADO ESPERADO
+
+
+
+Al final quiero un solo proyecto funcional llamado:
+
+
+
+aio-scrap-crawl
+
+
+
+Debe tener:
+
+
+
+1. Código organizado.
+
+2. Módulos separados.
+
+3. README.md completo.
+
+4. MERGE_ANALYSIS.md con el análisis de los repos.
+
+5. ARCHITECTURE.md explicando la arquitectura final.
+
+6. MIGRATION_NOTES.md explicando qué se movió de cada repo.
+
+7. TODO.md con funciones pendientes.
+
+8. CHANGELOG.md inicial.
+
+9. .env.example.
+
+10. Scripts claros para instalar, ejecutar, probar y compilar.
+
+11. Sistema de configuración centralizado.
+
+12. Pruebas básicas donde sea posible.
+
+13. Manejo de errores.
+
+14. Logs.
+
+15. Código preparado para seguir creciendo.
+
+
+
+PROCESO DE TRABAJO
+
+
+
+Hazlo en fases:
+
+
+
+FASE 1 — Análisis
+
+
+
+* Recorre todos los repos.
+
+* Identifica stack, dependencias, estructura y propósito.
+
+* Crea MERGE_ANALYSIS.md.
+
+
+
+FASE 2 — Decisión de arquitectura
+
+
+
+* Elige el repo o stack base.
+
+* Define la estructura final.
+
+* Crea ARCHITECTURE.md.
+
+
+
+FASE 3 — Migración
+
+
+
+* Crea la nueva carpeta aio-scrap-crawl.
+
+* Migra las mejores funciones.
+
+* Ordena cada función en módulos.
+
+* Elimina duplicados.
+
+* Refactoriza lo necesario.
+
+
+
+FASE 4 — Integración
+
+
+
+* Unifica configuración.
+
+* Unifica dependencias.
+
+* Unifica scripts.
+
+* Unifica logs.
+
+* Unifica exports.
+
+* Crea una API o CLI principal, según lo más conveniente.
+
+
+
+FASE 5 — Validación
+
+
+
+* Instala dependencias.
+
+* Ejecuta pruebas.
+
+* Ejecuta build si aplica.
+
+* Corrige errores.
+
+* Documenta lo que no se pudo corregir.
+
+
+
+FASE 6 — Documentación final
+
+
+
+* Crea README.md con:
+
+
+
+  * Descripción del proyecto.
+
+  * Instalación.
+
+  * Uso.
+
+  * Comandos disponibles.
+
+  * Estructura.
+
+  * Ejemplos.
+
+  * Cómo agregar nuevos módulos.
+
+* Crea MIGRATION_NOTES.md.
+
+* Crea TODO.md.
+
+* Crea CHANGELOG.md.
+
+
+
+REQUISITOS DE CALIDAD
+
+
+
+* Código limpio.
+
+* Nombres claros.
+
+* Comentarios solo donde aporten valor.
+
+* Separación clara entre core, módulos y utilidades.
+
+* Evitar código spaghetti.
+
+* Evitar dependencias innecesarias.
+
+* Evitar acoplar todo en un solo archivo.
+
+* Preparar el proyecto para poder convertirlo después en app web, app desktop, API o CLI.
+
+* Documentar cualquier decisión técnica importante.
+
+
+
+IMPORTANTE
+
+
+
+Antes de hacer cambios grandes, primero presenta el análisis y el plan de merge. Después continúa aplicando la integración paso a paso.
+
+
+
+Si encuentras varios lenguajes o stacks, decide cuál conviene mantener como núcleo principal. Si conviene conservar varios, crea una arquitectura híbrida ordenada.
+
+
+
+No quiero una mezcla desordenada. Quiero un AIO profesional, escalable y entendible.
+
+
+
+Empieza analizando la carpeta completa y genera el plan técnico.
