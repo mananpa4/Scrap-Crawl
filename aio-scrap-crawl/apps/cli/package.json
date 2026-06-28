@@ -16,6 +16,7 @@
   "dependencies": {
     "@aio/adapters": "workspace:*",
     "@aio/ai": "workspace:*",
+    "@aio/captcha": "workspace:*",
     "@aio/core": "workspace:*",
     "@aio/crawler": "workspace:*",
     "@aio/security": "workspace:*",

@@ -35,6 +35,9 @@ importers:
       '@aio/ai':
         specifier: workspace:*
         version: link:../../modules/ai
+      '@aio/captcha':
+        specifier: workspace:*
+        version: link:../../modules/captcha
       '@aio/core':
         specifier: workspace:*
         version: link:../../packages/core
@@ -57,6 +60,8 @@ importers:
       '@aio/core':
         specifier: workspace:*
         version: link:../../packages/core
+
+  modules/captcha: {}
 
   modules/security: {}
 

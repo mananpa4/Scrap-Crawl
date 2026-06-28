@@ -15,6 +15,13 @@ nothing is silently missing.
 - [ ] **pyai** (broken-but-valuable): wire Crawl4AI (`/scrape`), ScrapeGraphAI
       (`/extract`), browser-use (`/agent`) in `services/py-ai/app/main.py`
       (TODO blocks present). Return real `PageData`.
+- [x] **scrapling**: HTTP `Fetcher` + `StealthyFetcher` wired for real in
+      `services/py-ai/app/main.py` (`_scrape_scrapling`), mapped to `PageData`,
+      verified live end-to-end. Browser stealth falls back to HTTP if it can't launch.
+- [ ] **scrapling** (remaining): verify `StealthyFetcher` on a host that can launch
+      the browser (sandbox here hits `spawn UNKNOWN`); wire `auto_save`/`adaptive`
+      self-healing selectors for repeated structured extraction; expose Scrapling's
+      Spider framework as a crawl path and its native MCP server.
 - [ ] **scrapy:** optional engine via a Python microservice for heavy pipelines
       + native feed exports.
 
@@ -26,10 +33,26 @@ nothing is silently missing.
 - [ ] Richer robots.txt (crawl-delay, sitemaps, RFC 9309 edge cases).
 - [ ] Excel export (`xlsx`) and DB exporters.
 - [ ] Proxy/User-Agent rotation surfaced at the core level (Crawlee-backed).
+- [ ] Wire `AIO_PROXY_URL` (commented in `.env.example`) through the Crawlee
+      engine's `proxyConfiguration` — enables routing egress via an external
+      SOCKS5 such as **MasterDnsVPN** for censored/geo-blocked targets. (Documented
+      as optional egress; MasterDnsVPN itself stays out of the core.)
 
 ## Security
 - [ ] Wire real WipeDown LLM sanitization via `services/py-ai` `/sanitize`.
 - [ ] Expand injection signature set; add allow/deny domain policy.
+
+## Captcha (`@aio/captcha`)
+- [x] `CaptchaSolver` interface + `TwoCaptchaProvider` (real) + py-ai `/captcha/solve`
+      and `/captcha/health`; `aio captcha` CLI. Verified end-to-end.
+- [ ] **ai-vision** (broken-but-valuable): implement `_solve_ai_vision` in py-ai using
+      a multimodal LLM (GPT-4o/Gemini) via `@aio/ai` + browser-use (image/puzzle/audio).
+- [ ] Auto-detect captchas in the browser engines (Scrapling/browser-use/Crawlee-PW)
+      and call the solver inline (inject token / perform action) instead of a manual CLI.
+- [ ] Map remaining 2Captcha types as needed (datadome, amazon_waf, mtcaptcha, …);
+      verify image/text/geetest paths against a real key.
+- [ ] Borrow human-mouse-movement (B-spline) idea from `captcha_bypass` for behavioral
+      anti-bot in the browser engines.
 
 ## Modules
 - [ ] `@aio/ai`: provider abstraction beyond the py-ai passthrough (token costs,

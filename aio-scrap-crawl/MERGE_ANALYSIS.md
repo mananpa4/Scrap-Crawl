@@ -4,16 +4,24 @@
 > encontrados en `Scrap-Crawl/repos/`, decisiones de merge y arquitectura
 > recomendada. Ningún repo original se modifica ni se borra.
 
-Fecha de análisis: 2026-06-15
+Fecha de análisis inicial: 2026-06-15 · Ampliación (2 repos nuevos): 2026-06-25
+
+> **Actualización 2026-06-25:** se añadieron al dataset dos repos nuevos —
+> **Scrapling** (#11) y **MasterDnsVPN** (#12)— elevando el total a **12 repos**.
+> Veredicto: Scrapling se **integra** como engine Python de stealth/adaptativo;
+> MasterDnsVPN **queda fuera del core** (es transporte de red anti-censura, no
+> una herramienta de scraping) y se documenta como egress SOCKS5 opcional. Ver
+> §2.11, §2.12 y §6.
 
 ---
 
 ## 0. Resumen ejecutivo
 
-Se encontraron **10 repositorios**, todos proyectos open-source maduros y de
-primer nivel en el ecosistema de scraping/crawling/automatización. Son **3
-lenguajes** (Python, TypeScript/Node, Go) y dos de ellos son **frameworks
-completos** (Scrapy, Playwright), no librerías pequeñas.
+Se encontraron **12 repositorios**, todos proyectos open-source maduros y de
+primer nivel en el ecosistema de scraping/crawling/automatización (más uno de
+red anti-censura, MasterDnsVPN). Son **3 lenguajes** (Python, TypeScript/Node,
+Go) y dos de ellos son **frameworks completos** (Scrapy, Playwright), no
+librerías pequeñas.
 
 Conclusión central: **no es viable ni recomendable "fusionar el código fuente"**
 de estos proyectos en un único árbol compilable. Son frameworks de cientos de
@@ -50,6 +58,8 @@ forma profesional, escalable y mantenible de cumplir el objetivo "All In One".
 | **maxun-develop** | TypeScript/React + Express | Plataforma no-code (web app) | App web / grabador de robots / scheduler / integraciones | **AGPL-3.0** | 0.0.42 |
 | **playwright-main** | TypeScript/Node | Automatización de navegador | Primitiva de navegador (driver) | Apache-2.0 | 1.62.0-next |
 | **katana-dev** | Go ≥1.26 | Crawler/spider rápido | Motor de descubrimiento de URLs ultrarrápido (binario) | MIT | (dev) |
+| **Scrapling-main** | Python ≥3.10 | Framework de scraping adaptativo + stealth | Motor de scrape anti-bot + selectores auto-reparables (servicio py-ai) | **BSD-3-Clause** | 0.4.9 |
+| **MasterDnsVPN-main** | Go ≥1.25 | Túnel DNS / VPN anti-censura | **No-scraping.** Egress SOCKS5 opcional (transporte de red, fuera del core) | MIT | (main) |
 
 > **Nota de licencias (decisión de arquitectura, no detalle):** `firecrawl` y
 > `maxun` son **AGPL-3.0** (copyleft de red). Usarlos **como servicios
@@ -158,6 +168,45 @@ forma profesional, escalable y mantenible de cumplir el objetivo "All In One".
 - **Descartar:** reescribirlo; se usa el **binario** vía adaptador (subproceso).
 - **Decisión:** **engine "discovery" (binario Go)** para mapear sitios a gran escala.
 
+### 2.11 Scrapling (Python · BSD-3-Clause) — *scrape adaptativo + stealth* `[NUEVO 2026-06-25]`
+- **Qué hace:** framework de scraping moderno con varios *fetchers*
+  (`Fetcher`, `AsyncFetcher`, `StealthyFetcher`, `DynamicFetcher`), un parser con
+  **selectores auto-reparables** (`adaptive=True`/`auto_save`) que relocaliza
+  elementos cuando el sitio cambia de diseño, **bypass anti-bot de fábrica**
+  (Cloudflare Turnstile), framework de **spiders** con pause/resume + rotación de
+  proxy + multi-sesión concurrente, **CLI** y **servidor MCP** nativo.
+- **Conservar:** (1) *stealth fetching* anti-bot, (2) **selectores auto-reparables**
+  (genuinamente único frente al resto del dataset), (3) servidor MCP.
+- **Descartar:** nada crítico; su core se respeta dentro del servicio Python.
+- **Solapa con:** Crawl4AI y Scrapy (descubrimiento/scrape), pero **aporta lo que
+  ninguno tiene**: self-healing selectors + anti-bot listo. No se descarta por
+  solapamiento; se integra como engine diferenciado.
+- **Licencia:** BSD-3-Clause (permisiva) → **seguro de integrar** (a diferencia de
+  Firecrawl/Maxun, no contamina el core).
+- **Decisión:** **engine "scrapling" (servicio Python `py-ai`)**, expuesto vía
+  `ScraplingAdapter` y `aio scrape --engine scrapling`. Comparte proceso/`PYAI_URL`
+  con el engine Crawl4AI; se enruta con `engine: "scrapling"` en `/scrape`.
+
+### 2.12 MasterDnsVPN (Go · MIT) — *túnel DNS / VPN anti-censura* `[NUEVO 2026-06-25]`
+- **Qué hace:** transporta tráfico TCP sobre consultas/respuestas **DNS** (similar
+  a DNSTT/SlipStream): protocolo propio + ARQ, multipath, duplicación de paquetes,
+  health-checks de resolvers, **proxy SOCKS5/SOCKS4 local**, caché DNS. Probado en
+  apagones totales de Internet (Irán).
+- **Análisis de encaje:** **no es una herramienta de scraping/crawling/parsing/
+  extracción.** Es infraestructura de red para sobrevivir a censura. Su único punto
+  de contacto con un AIO de scraping es que expone un **SOCKS5 local** por el que
+  se podría enrutar el egress de un crawl hacia destinos censurados/geobloqueados.
+- **Conservar:** únicamente como **transporte de red opcional y fuera de banda**.
+  El AIO ya cubre proxy/UA con Crawlee; aquí solo se documenta cómo apuntar un
+  proxy a su SOCKS5.
+- **Descartar del core:** **todo el código.** Vendorizarlo o convertirlo en "engine"
+  sería precisamente el *merge desordenado* que el objetivo quiere evitar (mezclar
+  dominios distintos). Licencia MIT (permisiva), pero la decisión no es de licencia
+  sino de **pertinencia**.
+- **Decisión:** **fuera del core.** Documentado como egress SOCKS5 opcional en
+  `.env.example` (`AIO_PROXY_URL`, comentado) y README. El cableado real del proxy
+  a través de Crawlee queda como TODO honesto (no se finge implementado).
+
 ---
 
 ## 3. Solapamientos y deduplicación
@@ -177,6 +226,10 @@ forma profesional, escalable y mantenible de cumplir el objetivo "All In One".
 | CLI | Crawl4AI (`crwl`), Crawlee CLI, browser-use, Katana | **CLI propia** unificada que orquesta engines |
 | IA / LLM | ScrapeGraphAI, Crawl4AI, browser-use | Capa `modules/ai` con proveedores unificados |
 | Seguridad de contenido | WipeDown | **Único** → módulo transversal obligatorio antes de IA |
+| Anti-bot / stealth fetching | Crawl4AI (stealth), **Scrapling**, browser-use | **Scrapling** primario (Cloudflare Turnstile de fábrica); Crawl4AI alterno |
+| Selectores auto-reparables | **Scrapling** (único) | **Scrapling** — capacidad nueva que el AIO no tenía |
+| Servidor MCP | browser-use, **Scrapling**, Maxun | Disponible vía engines; expuesto incrementalmente |
+| Egress / red anti-censura | **MasterDnsVPN** (único) | **Fuera del core**: SOCKS5 opcional, no es un engine |
 
 ---
 
@@ -188,11 +241,14 @@ forma profesional, escalable y mantenible de cumplir el objetivo "All In One".
   (Electron/Tauri sobre el front) y `apps/cli` que pide el objetivo; Crawlee (Apache)
   da gratis cola, pool, proxy, sesiones y storages.
 - **Motor base del crawling:** **Crawlee**.
-- **Capa de IA/extracción:** **servicio Python** (FastAPI) que envuelve Crawl4AI,
-  ScrapeGraphAI y browser-use detrás de una API interna; **WipeDown** como saneo previo.
+- **Capa de IA/extracción y scrape avanzado:** **servicio Python** (FastAPI) que
+  envuelve Crawl4AI, **Scrapling** (stealth/adaptativo), ScrapeGraphAI y browser-use
+  detrás de una API interna; **WipeDown** como saneo previo.
 - **Motor de descubrimiento rápido:** **binario Katana (Go)** tras un adaptador.
 - **Servicios AGPL opcionales y aislados:** **Firecrawl** (API) y **Maxun** (web),
   vía Docker + adaptador HTTP. Nunca vendidos en el core.
+- **Egress de red opcional (fuera del core):** **MasterDnsVPN** como proxy SOCKS5
+  fuera de banda para destinos censurados. No es un engine; no se vendoriza.
 - **Patrón unificador:** todos los engines implementan una interfaz común
   `ScrapeEngine` / `CrawlEngine` con un **modelo de Job y un esquema de salida
   únicos**; el core enruta cada job al engine adecuado.
@@ -202,13 +258,16 @@ Detalle completo en `ARCHITECTURE.md`.
 ### Tabla "conservar / descartar / refactor / pendiente"
 
 - **Conservar e integrar ya:** Crawlee (core), Crawl4AI (markdown/extract),
-  ScrapeGraphAI (structured), browser-use (agent), WipeDown (security), Katana
-  (discovery), Playwright (driver).
+  **Scrapling (stealth/adaptativo)**, ScrapeGraphAI (structured), browser-use
+  (agent), WipeDown (security), Katana (discovery), Playwright (driver).
 - **Conservar como servicio AGPL aislado:** Firecrawl (API), Maxun (web UI).
-- **Refactorizar:** envolver Scrapy/Crawl4AI/ScrapeGraphAI/browser-use bajo una API
-  Python única en `services/py-ai`; normalizar salidas al esquema común.
+- **Refactorizar:** envolver Scrapy/Crawl4AI/Scrapling/ScrapeGraphAI/browser-use
+  bajo una API Python única en `services/py-ai`; normalizar salidas al esquema común.
 - **Pendiente/documentado (no rompe):** adaptador Katana (requiere binario),
-  servicio Firecrawl (requiere despliegue), `apps/web` sobre Maxun (decisión AGPL).
+  servicio Firecrawl (requiere despliegue), `apps/web` sobre Maxun (decisión AGPL),
+  wiring real de Scrapling/Crawl4AI en `py-ai` (libs opcionales).
+- **Fuera del core (documentado, no es scraping):** **MasterDnsVPN** — egress
+  SOCKS5 opcional para redes censuradas; no se integra ni se vendoriza.
 
 ---
 
@@ -225,3 +284,41 @@ Detalle completo en `ARCHITECTURE.md`.
    antes de cualquier paso LLM (riesgo real, ya observado en este propio dataset).
 5. **No reinventar:** primero se cablea lo existente tras la interfaz común; no se
    crean engines nuevos hasta agotar lo que ya hay.
+
+---
+
+## 6. Capa de captcha (carpeta `repos-captch/`) `[NUEVO 2026-06-27]`
+
+Cuatro repos adicionales, en una carpeta aparte (`repos-captch/`, no `repos/`).
+Aportan una **capa que el AIO no tenía: resolución de CAPTCHAs**, complementaria al
+stealth de Scrapling (Scrapling *evita* la detección; estos *resuelven* el reto
+cuando el sitio igualmente lo presenta).
+
+| Repo | Qué es | Licencia | Veredicto |
+|------|--------|----------|-----------|
+| **2captcha-python** | Cliente oficial del servicio comercial 2Captcha (recaptcha v2/v3, hcaptcha, **turnstile**, funcaptcha, geetest, datadome, image/text… +30 tipos) | **MIT** | **Integrar — proveedor primario** |
+| **ai-captcha-bypass** | Solver por IA multimodal (GPT-4o + Gemini) con Selenium: texto, reCAPTCHA v2, puzzle, audio | Custom **permisiva** | **Integrar selectivo — proveedor secundario self-hosted** (prompts/técnicas, no el pegamento Selenium) |
+| **captcha_bypass** | reCAPTCHA v2 con Selenium + Buster (audio) + ratón B-spline | **SIN licencia** | **Solo referencia** (código no reutilizable; empaqueta `.xpi` GPL + binarios) |
+| **challenge-bypass-extension** | Extensión Privacy Pass (tokens vs captcha) | BSD-3, **DEPRECATED** | **Fuera de alcance** (extensión interactiva, no librería; obsoleta) |
+
+**Arquitectura adoptada** (consistente con "orquestación, no fusión"): módulo
+`modules/captcha` (`@aio/captcha`) con una interfaz `CaptchaSolver` y proveedores
+intercambiables:
+
+```
+CaptchaSolver { name, isAvailable(), solve(challenge) → solution }
+  ├─ TwoCaptchaProvider → py-ai /captcha/solve (envuelve twocaptcha)   [primario, de pago, REAL]
+  └─ AiVisionProvider   → py-ai /captcha/solve (provider=ai)           [secundario, self-host, STUB]
+```
+
+- El cliente `twocaptcha` (Python, MIT) vive en `services/py-ai`; la `TWOCAPTCHA_API_KEY`
+  queda server-side. CLI: `aio captcha <tipo> --url … --sitekey …`.
+- Proveedores degradan con `isAvailable(): false` si falta lib o key (mismo patrón
+  que el resto de engines).
+- **Nota ética/legal:** resolver captchas evade defensas anti-bot y suele chocar con
+  ToS. Uso legítimo: sitios propios, engagements autorizados, accesibilidad, o donde
+  el ToS lo permita. Dimensionado para uso autorizado.
+- **No integrado:** `captcha_bypass` (sin licencia) y Privacy Pass (deprecado, no
+  programable) — solo referencia de técnicas (ratón humano, tokens).
+
+Detalle de mapeo en `MIGRATION_NOTES.md`.

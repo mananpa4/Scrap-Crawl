@@ -2,7 +2,7 @@
 
 **All-In-One scraping and crawling orchestration platform** — one TypeScript core, one CLI, one output schema, over the best open-source engines.
 
-> Built by intelligently merging 10 projects: Crawlee, Crawl4AI, ScrapeGraphAI, Firecrawl, Katana, browser-use, Playwright, Scrapy, WipeDown and Maxun.
+> Built by intelligently merging 12 projects: Crawlee, Crawl4AI, ScrapeGraphAI, Firecrawl, Katana, browser-use, Playwright, Scrapy, WipeDown, Maxun, Scrapling and MasterDnsVPN. Plus a **captcha-solving layer** (`@aio/captcha`: 2Captcha + AI-vision).
 
 ---
 
@@ -13,7 +13,7 @@ These tools can't be naively fused — they span 3 languages, carry incompatible
 ```
 ScrapeJob / CrawlJob  ──►  [ engine ]  ──►  PageData  ──►  JSON / JSONL / CSV
                               ▲
-        fetch · crawlee · firecrawl · katana · pyai
+   fetch · crawlee · firecrawl · katana · pyai · scrapling
 ```
 
 ---
@@ -27,8 +27,13 @@ ScrapeJob / CrawlJob  ──►  [ engine ]  ──►  PageData  ──►  JSO
 | `firecrawl` | `@aio/adapters` | `FIRECRAWL_API_URL` | ✅ | ✅ | ✅ | ✅ | ✅ | — |
 | `katana` | `@aio/adapters` | `katana` binary | — | ✅ | ✅ | — | — | — |
 | `pyai` | `@aio/adapters` | `PYAI_URL` service | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `scrapling` | `@aio/adapters` | `PYAI_URL` service | ✅ | — | ✅ | — | ✅ | — |
 
 Engines that are not configured report `available: false` and fail with a clear error instead of crashing.
+
+> **`scrapling`** is the stealth/adaptive Python engine (anti-bot fetching that
+> clears Cloudflare Turnstile, plus self-healing CSS selectors). It runs inside
+> the same `services/py-ai` process as `pyai`, so configuring `PYAI_URL` enables both.
 
 ---
 
@@ -82,7 +87,7 @@ Scrape a single URL.
 
 ```
 Options:
-  -e, --engine <name>   Engine: fetch|crawlee|firecrawl|katana|pyai  (default: $AIO_DEFAULT_ENGINE)
+  -e, --engine <name>   Engine: fetch|crawlee|firecrawl|katana|pyai|scrapling  (default: $AIO_DEFAULT_ENGINE)
   -f, --format <fmt>    Output format: json|jsonl|csv                 (default: json)
   -o, --out <file>      Write to file instead of stdout
   --markdown            Request markdown output (engine permitting)
@@ -112,6 +117,36 @@ Options:
 ### `aio engines`
 
 Print all registered engines with their capabilities and current availability as JSON.
+
+### `aio captcha <type>`
+
+Solve a captcha via a provider and print the solution (token/answer) as JSON. Served
+by the py-ai service (where the solving libraries live). **Use only on sites you are
+authorized to test** — captcha solving bypasses bot defenses and often violates ToS.
+
+```
+Arguments:
+  type                  recaptcha-v2|recaptcha-v3|hcaptcha|turnstile|funcaptcha|geetest|image|text
+
+Options:
+  -p, --provider <name> 2captcha | ai-vision        (default: $AIO_CAPTCHA_PROVIDER or 2captcha)
+  --url <url>           page URL (token captchas)
+  --sitekey <key>       site key (token captchas)
+  --image <file>        image file path (image captcha)
+  --text <q>            question text (text captcha)
+  --action <a>          reCAPTCHA v3 action
+  --min-score <n>       reCAPTCHA v3 minimum score
+  --enterprise          reCAPTCHA enterprise
+```
+
+Providers: **`2captcha`** (commercial service, real — needs `TWOCAPTCHA_API_KEY`) and
+**`ai-vision`** (self-hosted LMM solver, currently a stub). Both report
+`available: false` until configured.
+
+```bash
+# Example (requires a paid 2Captcha key set in services/py-ai env)
+pnpm aio captcha turnstile --url https://example.com --sitekey 0x4AA...
+```
 
 ---
 
@@ -175,22 +210,23 @@ aio-scrap-crawl/
 ├── packages/
 │   ├── core/           # @aio/core — contract, registry, config, exporters, FetchEngine
 │   ├── crawler/        # @aio/crawler — CrawleeEngine (Crawlee, Apache-2.0)
-│   ├── adapters/       # @aio/adapters — Firecrawl, Katana, PyAi adapters
+│   ├── adapters/       # @aio/adapters — Firecrawl, Katana, PyAi, Scrapling adapters
 │   └── ai/             # @aio/ai — LLM provider facade
 ├── modules/
-│   └── security/       # @aio/security — WipeDown prompt-injection sanitizer
+│   ├── security/       # @aio/security — WipeDown prompt-injection sanitizer
+│   └── captcha/        # @aio/captcha — CaptchaSolver: 2captcha + ai-vision providers
 ├── apps/
 │   ├── cli/            # unified `aio` CLI (Commander.js)
 │   ├── web/            # planned: no-code web UI
 │   └── desktop/        # planned: Electron/Tauri desktop app
 ├── services/
-│   └── py-ai/          # FastAPI service: Crawl4AI / ScrapeGraphAI / browser-use
+│   └── py-ai/          # FastAPI service: Crawl4AI / Scrapling / ScrapeGraphAI / browser-use
 ├── scripts/
 │   └── example-crawl.mjs  # offline 5-page demo
 ├── .env.example
 ├── docker-compose.yml
 ├── ARCHITECTURE.md     # full design document
-├── MERGE_ANALYSIS.md   # analysis of the 10 source repos
+├── MERGE_ANALYSIS.md   # analysis of the 12 source repos
 ├── MIGRATION_NOTES.md  # how each repo maps into the AIO
 ├── CHANGELOG.md
 └── TODO.md             # pending work by area
@@ -215,7 +251,7 @@ pnpm clean            # remove build artifacts
 
 ### Python AI service
 
-Provides Crawl4AI, ScrapeGraphAI, browser-use and WipeDown endpoints:
+Provides Crawl4AI, Scrapling, ScrapeGraphAI, browser-use and WipeDown endpoints:
 
 ```bash
 # Via Docker
@@ -227,14 +263,31 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8099
 ```
 
-Set `PYAI_URL=http://127.0.0.1:8099` in `.env`, then use `--engine pyai`.
+Set `PYAI_URL=http://127.0.0.1:8099` in `.env`, then use `--engine pyai` or
+`--engine scrapling` (both are served by this process).
 
-> The `/scrape`, `/extract` and `/sanitize` endpoints have working stubs.
-> See `TODO(integration)` comments in `services/py-ai/app/main.py` to wire real libraries.
+> **`scrapling` is fully wired** (live, not a stub). Install it with
+> `pip install 'scrapling[fetchers]'` for the HTTP fetcher; add `scrapling install`
+> to enable the browser-based stealth fetcher. With `stealth=true` it uses the real
+> `StealthyFetcher` and transparently falls back to the HTTP `Fetcher` if a browser
+> can't launch (the reason is recorded under `metadata["scrapling.stealth_error"]`).
+>
+> The `pyai` (Crawl4AI) `/scrape`, plus `/extract` and `/sanitize`, are still stubs —
+> see the `TODO(integration)` comments in `services/py-ai/app/main.py`.
 
 ### Firecrawl (AGPL-3.0)
 
 Run the upstream [Firecrawl](https://github.com/mendableai/firecrawl) compose, set `FIRECRAWL_API_URL`, then use `--engine firecrawl`.
+
+### MasterDnsVPN — optional network egress (not an engine)
+
+[MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN) (MIT, Go) is a
+DNS-tunnelling transport for harsh/censored networks, **not** a scraper. It is
+intentionally **outside the AIO core**. If you run its client it exposes a local
+SOCKS5 proxy you can route crawls through to reach censored or geo-blocked
+targets. Run it separately (`repos/MasterDnsVPN-main`) and point a proxy at its
+SOCKS5 listener. Wiring this through the Crawlee engine's proxy configuration is
+a documented [TODO](TODO.md).
 
 ---
 
@@ -278,6 +331,9 @@ Core, packages, modules, apps and services: **MIT**.
 
 Engine dependencies:
 - [Crawlee](https://github.com/apify/crawlee) — Apache-2.0
+- [Scrapling](https://github.com/D4Vinci/Scrapling) — BSD-3-Clause (optional Python lib in `services/py-ai`)
+- [MasterDnsVPN](https://github.com/masterking32/MasterDnsVPN) — MIT (optional out-of-band SOCKS5 egress, not vendored)
+- [2captcha-python](https://github.com/2captcha/2captcha-python) — MIT (optional captcha solver client in `services/py-ai`)
 - [Firecrawl](https://github.com/mendableai/firecrawl) — AGPL-3.0 (separate service, never vendored)
 - [Maxun](https://github.com/getmaxun/maxun) — AGPL-3.0 (separate service, never vendored)
 

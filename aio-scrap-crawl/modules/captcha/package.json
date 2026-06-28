@@ -1,0 +1,20 @@
+{
+  "name": "@aio/captcha",
+  "version": "0.1.0",
+  "description": "CAPTCHA-solving layer for the AIO: a provider-agnostic CaptchaSolver interface with a 2Captcha provider (commercial API) and an AI-vision provider (self-hosted LMM). Used by browser engines to obtain tokens/answers for protected pages.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  }
+}

@@ -9,7 +9,7 @@ Permanent reference for Claude Code sessions working on this project.
 
 **aio-scrap-crawl** is an All-In-One scraping and crawling orchestration platform. It unifies 10 open-source tools behind a single TypeScript core, CLI and (planned) REST API. The design principle is **orchestration, not fusion**: every tool becomes a pluggable engine behind a shared interface; swapping engines is one string change.
 
-Origin: intelligent merge of 10 repos (Crawlee, Crawl4AI, ScrapeGraphAI, Firecrawl, Katana, browser-use, Playwright, Scrapy, WipeDown, Maxun). None of the original repos were modified or vendored.
+Origin: intelligent merge of 12 repos (Crawlee, Crawl4AI, ScrapeGraphAI, Firecrawl, Katana, browser-use, Playwright, Scrapy, WipeDown, Maxun, Scrapling, MasterDnsVPN). None of the original repos were modified or vendored. Scrapling is integrated as the `scrapling` engine; MasterDnsVPN is out of core (optional SOCKS5 egress, not a scraper).
 
 ---
 
@@ -65,10 +65,11 @@ aio-scrap-crawl/
 │   ├── core/        @aio/core     — contract, registry, config, logger, exporters,
 │   │                               URL utils, robots cache, FetchEngine (zero deps)
 │   ├── crawler/     @aio/crawler  — CrawleeEngine (Crawlee Apache-2.0, CheerioCrawler)
-│   ├── adapters/    @aio/adapters — FirecrawlAdapter, KatanaAdapter, PyAiAdapter
+│   ├── adapters/    @aio/adapters — FirecrawlAdapter, KatanaAdapter, PyAiAdapter, ScraplingAdapter
 │   └── ai/          @aio/ai       — LLM provider facade (stub over py-ai)
 ├── modules/
-│   └── security/    @aio/security — WipeDown prompt-injection sanitizer (local + client)
+│   ├── security/    @aio/security — WipeDown prompt-injection sanitizer (local + client)
+│   └── captcha/     @aio/captcha  — CaptchaSolver: TwoCaptchaProvider (real) + AiVisionProvider (stub)
 ├── apps/
 │   ├── cli/         @aio/cli      — unified `aio` CLI (Commander.js)
 │   ├── web/                       — planned: no-code web UI
@@ -84,7 +85,7 @@ aio-scrap-crawl/
 ### Workspace Dependencies
 
 ```
-@aio/cli → @aio/core, @aio/adapters, @aio/ai, @aio/crawler, @aio/security
+@aio/cli → @aio/core, @aio/adapters, @aio/ai, @aio/crawler, @aio/security, @aio/captcha
 @aio/adapters → @aio/core
 @aio/crawler  → @aio/core  (+ crawlee)
 @aio/security → (no deps)
@@ -112,10 +113,12 @@ Build order is enforced by Turborepo (`turbo.json`).
 | `packages/adapters/src/firecrawl.ts` | `FirecrawlAdapter` (HTTP → AGPL service) |
 | `packages/adapters/src/katana.ts` | `KatanaAdapter` (child_process → Go binary) |
 | `packages/adapters/src/pyai.ts` | `PyAiAdapter` (HTTP → FastAPI service) |
+| `packages/adapters/src/scrapling.ts` | `ScraplingAdapter` (HTTP → py-ai, `engine: "scrapling"`) |
 | `modules/security/src/index.ts` | `sanitizeText()`, `WipeDownClient`, `sanitize()` |
+| `modules/captcha/src/index.ts` | `CaptchaSolver`, `createCaptchaSolver()`, `TwoCaptchaProvider`, `AiVisionProvider` |
 | `apps/cli/src/index.ts` | CLI commands: `scrape`, `crawl`, `engines` |
 | `apps/cli/src/registry-factory.ts` | `buildRegistry()` — assembles all engines from config |
-| `services/py-ai/app/main.py` | FastAPI stubs: `/health`, `/scrape`, `/extract`, `/sanitize` |
+| `services/py-ai/app/main.py` | FastAPI: `/health`, `/scrape` (routes `crawl4ai`\|`scrapling`), `/extract`, `/sanitize`, `/captcha/solve`, `/captcha/health` |
 | `.env.example` | All config variables documented with defaults |
 | `docker-compose.yml` | Optional companion services (py-ai, Firecrawl, Maxun) |
 
@@ -205,6 +208,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8099
 - **Data validation:** Pydantic 2.9+
 - **Optional AI libs** (uncommented in `requirements.txt` when wiring):
   - `crawl4ai` ≥ 0.4 — Markdown scraping
+  - `scrapling` ≥ 0.4 — Stealth/adaptive scraping (anti-bot, self-healing selectors)
   - `scrapegraphai` ≥ 2.1 — Structured LLM extraction
   - `browser-use` ≥ 0.13 — Agentic browser automation
   - `wipedown` ≥ 1.0 — LLM semantic sanitization

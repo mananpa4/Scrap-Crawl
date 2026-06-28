@@ -1,5 +1,10 @@
 import { EngineRegistry, FetchEngine, type AioConfig } from '@aio/core';
-import { FirecrawlAdapter, KatanaAdapter, PyAiAdapter } from '@aio/adapters';
+import {
+  FirecrawlAdapter,
+  KatanaAdapter,
+  PyAiAdapter,
+  ScraplingAdapter,
+} from '@aio/adapters';
 
 export interface BuildRegistryOptions {
   /** Lazily load the heavy Crawlee engine (only when requested). */
@@ -26,6 +31,7 @@ export async function buildRegistry(
   );
   registry.register(new KatanaAdapter({ bin: config.katanaBin }));
   registry.register(new PyAiAdapter({ url: config.pyaiUrl }));
+  registry.register(new ScraplingAdapter({ url: config.pyaiUrl }));
 
   if (opts.withCrawlee) {
     try {

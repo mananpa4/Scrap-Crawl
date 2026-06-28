@@ -28,12 +28,16 @@ que implementan la misma interfaz que los engines nativos.
         ┌────────────────┬───────┴────────┬───────────────┬───────────────┐
         ▼                ▼                ▼               ▼               ▼
  packages/crawler   adapters/         adapters/       adapters/      modules/
- Crawlee (✓)        firecrawl (HTTP)  katana (bin)    pyai (HTTP)    security · ai
+ Crawlee (✓)        firecrawl (HTTP)  katana (bin)    pyai · scrapling security · ai
  Apache-2.0         AGPL service      Go binary       FastAPI svc    WipeDown · LLM
                                                           │
                                               services/py-ai (FastAPI)
-                                              wraps: crawl4ai · scrapegraph-ai
-                                                     browser-use · wipedown
+                                              wraps: crawl4ai · scrapling
+                                                     scrapegraph-ai · browser-use
+                                                     wipedown · 2captcha (captcha)
+
+ modules/captcha → CaptchaSolver: 2captcha (real) · ai-vision (stub)
+ (fuera del core) MasterDnsVPN → egress SOCKS5 opcional (no es un engine)
 ```
 
 ✓ = implementado y funcional en esta primera entrega. El resto son adaptadores
@@ -69,8 +73,11 @@ Cambiar de engine = cambiar un string. La salida y los exports no cambian.
 | Adaptador scrape→markdown API | `@aio/adapters/firecrawl` | **Firecrawl** (AGPL, servicio) | adaptador ✓, servicio externo |
 | Adaptador descubrimiento rápido | `@aio/adapters/katana` | **Katana** (Go binary) | adaptador ✓, binario externo |
 | Adaptador IA (extract/markdown/agent) | `@aio/adapters/pyai` | **Crawl4AI · ScrapeGraphAI · browser-use** | adaptador ✓, servicio externo |
-| Servicio IA | `services/py-ai` | Crawl4AI/ScrapeGraphAI/browser-use/WipeDown | esqueleto FastAPI |
+| Adaptador scrape stealth/adaptativo | `@aio/adapters/scrapling` | **Scrapling** (BSD-3) | adaptador ✓, servicio externo |
+| Servicio IA | `services/py-ai` | Crawl4AI/Scrapling/ScrapeGraphAI/browser-use/WipeDown | esqueleto FastAPI |
+| Egress de red (fuera del core) | — (documentado) | **MasterDnsVPN** (MIT, SOCKS5) | opcional, no es engine |
 | Seguridad de contenido | `@aio/security` | **WipeDown** (MIT) | heurística local ✓ + cliente servicio |
+| Capa de captcha | `@aio/captcha` + `services/py-ai` | **2captcha-python** (MIT) · ai-vision (stub) | 2captcha ✓ real · ai-vision stub |
 | Facade de proveedores LLM | `@aio/ai` | unifica config de IA | esqueleto |
 | App web no-code | `apps/web` | **Maxun** (AGPL, servicio) | placeholder documentado |
 | App desktop | `apps/desktop` | Electron/Tauri sobre el front | placeholder |

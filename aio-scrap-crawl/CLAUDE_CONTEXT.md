@@ -2,13 +2,18 @@
 
 **Purpose:** tracks current state, decisions, blockers and next steps.  
 **Update this file** whenever a significant task completes or a technical decision is made.  
-Last updated: 2026-06-15
+Last updated: 2026-06-25
 
 ---
 
-## Current Status: v0.1.0 Scaffold Complete ✅
+## Current Status: v0.2.0 — 12 repos integrated ✅
 
-The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 14/14 tests pass, zero TypeScript errors, CLI is functional end-to-end. The project is ready for GitHub publication.
+The AIO scaffold (Phase 1–6) is complete and validated. On 2026-06-25 two newly
+added source repos were folded in (total **12**): **Scrapling** integrated as the
+`scrapling` stealth/adaptive engine; **MasterDnsVPN** kept out of the core and
+documented as an optional SOCKS5 egress (it is a DNS-tunnel transport, not a
+scraper). All packages build, 14/14 tests pass, zero TypeScript errors, CLI lists
+the new engine. The project is ready for GitHub publication.
 
 **Validation results (last run: 2026-06-15):**
 
@@ -51,6 +56,14 @@ The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 
 - `FirecrawlAdapter` — HTTP POST to `/v1/scrape` and `/v1/crawl`; `isAvailable()` via OPTIONS
 - `KatanaAdapter` — `child_process.spawn`, JSONL parsing, `maxPages` enforcement via `kill()`
 - `PyAiAdapter` — HTTP POST to `/scrape`; maps response to `PageData`
+- `ScraplingAdapter` — HTTP POST to py-ai `/scrape` with `engine: "scrapling"`; stealth/adaptive scrape (BSD-3); shares `PYAI_URL` with `pyai`
+
+### Captcha (`@aio/captcha`) — 2captcha real, ai-vision stub
+- `CaptchaSolver` interface (`CaptchaChallenge` → `CaptchaSolution`), `createCaptchaSolver()`
+- `TwoCaptchaProvider` (real) → py-ai `/captcha/solve`; covers recaptcha v2/v3, hcaptcha, turnstile, funcaptcha, geetest, image, text
+- `AiVisionProvider` (stub) → self-hosted LMM solver, `not-implemented` until wired
+- py-ai `/captcha/health` reports per-provider readiness; `aio captcha <type>` CLI command
+- `TWOCAPTCHA_API_KEY` stays server-side; providers degrade with `isAvailable(): false`
 
 ### Security (`@aio/security`) — local heuristic working
 - `sanitizeText()` — strips zero-width/bidi chars, redacts 7 injection pattern families, flags fully-malicious input
@@ -64,10 +77,15 @@ The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 
 - WipeDown sanitizer applied by default; `--no-sanitize` opt-out
 - `buildRegistry()` in `registry-factory.ts` — lazy-loads Crawlee to keep CLI fast
 
-### Python Service (`services/py-ai`) — skeleton only
+### Python Service (`services/py-ai`) — Scrapling live; rest stubs
 - FastAPI app with `/health`, `/scrape`, `/extract`, `/sanitize`
-- All endpoints return valid stub responses so adapters degrade gracefully
-- `requirements.txt` lists real libs commented-out (crawl4ai, scrapegraphai, browser-use, wipedown)
+- `/scrape` routes by `engine`: **`scrapling` is a real implementation**
+  (`_scrape_scrapling` → `StealthyFetcher`/`Fetcher`, mapped to `PageData`, with a
+  browser→HTTP fallback recorded in `metadata["scrapling.stealth_error"]`).
+  `crawl4ai` path is still a stub.
+- `/extract`, `/sanitize` return valid stub responses so adapters degrade gracefully
+- `requirements.txt` lists optional libs commented-out; `scrapling[fetchers]` is the
+  one actually exercised (installed in the dev env: scrapling 0.4.9).
 
 ### AI (`@aio/ai`) — stub
 - Placeholder module; forwards to py-ai service
@@ -76,7 +94,7 @@ The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 
 ### Documentation
 - `README.md` — comprehensive GitHub README ✅ (updated 2026-06-15)
 - `ARCHITECTURE.md` — full design with layer diagram
-- `MERGE_ANALYSIS.md` — technical analysis of the 10 source repos
+- `MERGE_ANALYSIS.md` — technical analysis of the 12 source repos
 - `MIGRATION_NOTES.md` — how each repo maps into the AIO
 - `TODO.md` — pending work grouped by area
 - `CHANGELOG.md` — v0.1.0 entry
@@ -146,7 +164,8 @@ The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 
 
 | Issue | Status | Location |
 |---|---|---|
-| py-ai `/scrape`, `/extract`, `/sanitize` are stubs | Pending | `services/py-ai/app/main.py` — `TODO(integration)` blocks present |
+| Scrapling `StealthyFetcher` browser can't spawn in sandbox (`spawn UNKNOWN`) | Env-only; falls back to HTTP Fetcher | works on a host that can launch the browser |
+| py-ai `/scrape` crawl4ai path, `/extract`, `/sanitize` are stubs | Pending | `services/py-ai/app/main.py` — `TODO(integration)` blocks present |
 | Firecrawl async crawl polling not implemented | Pending | `packages/adapters/src/firecrawl.ts:75` — comment documents the gap |
 | Katana binary not shipped | By design | User must `go install` or set `KATANA_BIN` |
 | `@aio/ai` is an empty facade | Pending | `packages/ai/src/index.ts` — no real implementation |
@@ -166,6 +185,52 @@ The AIO scaffold (Phase 1–6) is complete and validated. All 6 packages build, 
 ---
 
 ## Session Log
+
+### 2026-06-27 — Activate real Scrapling engine + analyze captcha repos
+
+**Completed:**
+- **Scrapling wired for real** in `services/py-ai/app/main.py` (`_scrape_scrapling` +
+  `_scrapling_to_page` + `_dedupe`): `StealthyFetcher` when `stealth=true`, HTTP
+  `Fetcher` otherwise; maps Scrapling's `Response`/`Selector` (`.css('::text')`,
+  `.attrib`, `.urljoin`, `.get_all_text`, `.html_content`, `.status`) to `PageData`.
+  Resilient imports: HTTP `Fetcher` works without the browser stack; stealth import is
+  lazy and failures fall back with `metadata["scrapling.stealth_error"]`.
+- Installed `scrapling[fetchers]` (0.4.9) + FastAPI/uvicorn in the dev env. Verified
+  **live end-to-end**: CLI → `ScraplingAdapter` → service → real Scrapling →
+  `PageData` (real title/text/links/status on example.com). `aio engines` →
+  `scrapling: available:true` with the service up.
+- `scrapling install` ran (Playwright browsers) but the chromium binary won't spawn
+  in this sandbox (`spawn UNKNOWN`) even with sandbox disabled → engine falls back to
+  HTTP as designed. Stealth works on a host that can launch the browser.
+- `requirements.txt` hint corrected to `scrapling[fetchers]` (+ `scrapling install`).
+- Updated README, CHANGELOG (v0.2.0 verified section), TODO to reflect "real, not stub".
+- **Captcha layer BUILT** (`@aio/captcha`): `CaptchaSolver` interface +
+  `TwoCaptchaProvider` (real, wraps `twocaptcha` in py-ai) + `AiVisionProvider` (stub).
+  py-ai `/captcha/solve` + `/captcha/health`; `aio captcha <type>` CLI. Verified
+  end-to-end (CLI → adapter → py-ai → live 2captcha.com call → graceful error with a
+  dummy key; with a valid `TWOCAPTCHA_API_KEY` it returns the token). `repos-captch/`
+  analysis: 2captcha-python = primary (done); ai-captcha-bypass = ai-vision (stub);
+  captcha_bypass (no license) + Privacy Pass (deprecated) = reference only.
+  Build 7 pkgs, typecheck 13/13, tests 23/23 green.
+
+### 2026-06-25 — Integrate 2 new repos (Scrapling, MasterDnsVPN)
+
+**Context:** `repos/` grew from 10 → 12. The two new repos (`Scrapling-main`,
+`MasterDnsVPN-main`) were untracked and absent from the original analysis.
+
+**Completed:**
+- Verified the existing scaffold still green before touching it (11 typecheck tasks, 14/14 tests).
+- **Scrapling (BSD-3) → integrated** as engine `scrapling`:
+  - `packages/adapters/src/scrapling.ts` (`ScraplingAdapter`), exported from the barrel, registered in `apps/cli/src/registry-factory.ts` (shares `PYAI_URL`).
+  - `services/py-ai/app/main.py`: `/scrape` now routes by `engine` field → `_scrape_crawl4ai` / `_scrape_scrapling` (stub + `TODO(integration)` showing `StealthyFetcher`). Added `scrapling` (commented) to `requirements.txt`.
+  - `.env.example`: engine list + py-ai section updated.
+- **MasterDnsVPN (MIT) → kept out of core** (it is a DNS-tunnel transport, not a scraper). Documented as optional SOCKS5 egress: commented `AIO_PROXY_URL` in `.env.example`, README section, MIGRATION/TODO entries. No code in core.
+- Updated docs: `MERGE_ANALYSIS.md` (12 repos: §2.11, §2.12, dedup + architecture tables), `MIGRATION_NOTES.md`, `TODO.md`, `CHANGELOG.md` (v0.2.0), `README.md`.
+- Re-validated: build + typecheck + 14/14 tests green; `aio engines` lists `scrapling`; `py_compile` clean.
+
+**Decisions made:**
+- Scrapling gets its own engine (not merged into `pyai`) because its differentiators (anti-bot stealth, self-healing selectors) deserve first-class `--engine scrapling` selection. Same `PYAI_URL` process, routed via `engine` field — no second service/port.
+- MasterDnsVPN excluded on **relevance**, not license. Kept honest: no dead config field that core ignores; `AIO_PROXY_URL` is commented and its Crawlee wiring is an explicit TODO.
 
 ### 2026-06-15 — Initial Scaffold (Session 1–2)
 

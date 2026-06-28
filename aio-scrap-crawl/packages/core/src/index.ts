@@ -28,5 +28,19 @@ export {
   htmlToText,
 } from './html';
 export { FetchEngine, type FetchEngineOptions } from './engines/fetch-engine';
+export {
+  fetchPlaystoreApp,
+  parsePlaystoreHtml,
+  sizeImageUrl,
+  type PlaystoreApp,
+  type PlaystoreOptions,
+} from './playstore';
+export {
+  resolveApk,
+  ALL_SITES,
+  type ApkSite,
+  type ApkSourceResult,
+  type ResolveOptions,
+} from './apksource';
 
 export const CORE_VERSION = '0.1.0';
